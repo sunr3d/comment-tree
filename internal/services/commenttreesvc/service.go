@@ -20,10 +20,6 @@ func New(repo infra.Database) *commentTreeSvc {
 }
 
 func (s *commentTreeSvc) WriteComment(ctx context.Context, comment *models.Comment) error {
-	if err := validateComment(comment); err != nil {
-		return fmt.Errorf("validateComment: %w", err)
-	}
-
 	if comment.ParentID != nil {
 		parent, err := s.repo.GetByID(ctx, *comment.ParentID)
 		if err != nil {
@@ -41,8 +37,15 @@ func (s *commentTreeSvc) WriteComment(ctx context.Context, comment *models.Comme
 }
 
 func (s *commentTreeSvc) GetComments(ctx context.Context, parentID int64) ([]models.Comment, error) {
-	if parentID < 1 {
-		return nil, fmt.Errorf("id родительского комментария должен быть больше 0")
+	comment, err := s.repo.GetByID(ctx, parentID)
+	if err != nil {
+		return nil, fmt.Errorf("s.repo.GetByID: %w", err)
+	}
+	if comment == nil {
+		return nil, fmt.Errorf("комментарий с id %d не найден", parentID)
+	}
+	if comment.DeletedAt != nil {
+		return nil, fmt.Errorf("комментарий с id %d уже удален", parentID)
 	}
 
 	return s.repo.GetByParentID(ctx, parentID)

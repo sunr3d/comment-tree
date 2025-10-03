@@ -12,6 +12,7 @@ import (
 	"github.com/sunr3d/comment-tree/internal/config"
 	httphandlers "github.com/sunr3d/comment-tree/internal/handlers"
 	"github.com/sunr3d/comment-tree/internal/infra/postgres"
+	"github.com/sunr3d/comment-tree/internal/services/commenttreesvc"
 )
 
 func Run(cfg *config.Config) error {
@@ -25,7 +26,7 @@ func Run(cfg *config.Config) error {
 		return fmt.Errorf("postgres.New(): %w", err)
 	}
 	// Сервисный слой
-	// TODO: svc := ...
+	svc := commenttreesvc.New(repo)
 
 	// REST API (HTTP) + Middleware
 	h := httphandlers.New(svc)

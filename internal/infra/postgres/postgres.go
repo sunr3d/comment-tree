@@ -17,7 +17,7 @@ import (
 
 const (
 	qCreate        = `INSERT INTO comments (parent_id, content, author) VALUES ($1, $2, $3)`
-	qGetByID       = `SELECT id, parent_id, content, author, created_at, updated_at, deleted_at, level FROM comments WHERE id = $1 AND deleted_at IS NULL`
+	qGetByID       = `SELECT id, parent_id, content, author, created_at, updated_at, deleted_at FROM comments WHERE id = $1 AND deleted_at IS NULL`
 	qGetByParentID = `
     WITH RECURSIVE comment_tree AS (
         SELECT id, parent_id, content, author, created_at, updated_at, deleted_at, 0 as level
@@ -83,11 +83,6 @@ func (r *postgresRepo) GetByID(ctx context.Context, id int64) (*models.Comment, 
 		id,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-
-		zlog.Logger.Error().Err(err).Msg("r.db.QueryRowWithRetry")
 		return nil, fmt.Errorf("r.db.QueryRowWithRetry: %w", err)
 	}
 
@@ -100,9 +95,10 @@ func (r *postgresRepo) GetByID(ctx context.Context, id int64) (*models.Comment, 
 		&out.CreatedAt,
 		&out.UpdatedAt,
 		&out.DeletedAt,
-		&out.Level,
 	); err != nil {
-		zlog.Logger.Error().Err(err).Msg("row.Scan")
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("row.Scan: %w", err)
 	}
 
@@ -117,7 +113,6 @@ func (r *postgresRepo) GetByParentID(ctx context.Context, parentID int64) ([]mod
 		parentID,
 	)
 	if err != nil {
-		zlog.Logger.Error().Err(err).Msg("r.db.QueryWithRetry")
 		_ = rows.Close()
 		return nil, fmt.Errorf("r.db.QueryWithRetry: %w", err)
 	}
@@ -137,7 +132,6 @@ func (r *postgresRepo) GetByParentID(ctx context.Context, parentID int64) ([]mod
 			&comment.DeletedAt,
 			&comment.Level,
 		); err != nil {
-			zlog.Logger.Error().Err(err).Msg("rows.Scan")
 			return nil, fmt.Errorf("rows.Scan: %w", err)
 		}
 
@@ -145,7 +139,6 @@ func (r *postgresRepo) GetByParentID(ctx context.Context, parentID int64) ([]mod
 	}
 
 	if err := rows.Err(); err != nil {
-		zlog.Logger.Error().Err(err).Msg("rows.Err")
 		return nil, fmt.Errorf("rows.Err: %w", err)
 	}
 

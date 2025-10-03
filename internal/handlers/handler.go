@@ -20,7 +20,9 @@ func (h *Handler) RegisterHandlers() *ginext.Engine {
 	router := ginext.New()
 	router.Use(ginext.Logger(), ginext.Recovery())
 
-	//TODO : add handlers
+	router.POST("/comments", h.writeComment)
+	router.GET("/comments", h.getComments)
+	router.DELETE("/comments/:id", h.deleteComment)
 
 	return router
 }
