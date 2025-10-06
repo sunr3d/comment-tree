@@ -45,6 +45,11 @@ func (h *Handler) writeComment(c *ginext.Context) {
 	}
 
 	if err := h.svc.WriteComment(c.Request.Context(), comment); err != nil {
+		if strings.Contains(err.Error(), "не найден") || strings.Contains(err.Error(), "уже удален") {
+			zlog.Logger.Error().Err(err).Msg("svc.WriteComment")
+			c.JSON(http.StatusNotFound, ginext.H{"error": "комментарий не найден"})
+			return
+		}
 		zlog.Logger.Error().Err(err).Msg("svc.WriteComment")
 		c.JSON(http.StatusInternalServerError, ginext.H{"error": "внутренняя ошибка сервера"})
 		return
@@ -54,23 +59,35 @@ func (h *Handler) writeComment(c *ginext.Context) {
 }
 
 func (h *Handler) getComments(c *ginext.Context) {
-	parent := c.Query("parent")
-	if parent == "" {
-		c.JSON(http.StatusBadRequest, ginext.H{"error": "требуется параметр parent"})
+	var req getCommentsReq
+	if err := c.ShouldBindQuery(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ginext.H{"error": "некорректный запрос"})
 		return
 	}
-
-	parentID, err := strconv.ParseInt(parent, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ginext.H{"error": "некорректный id родительского комментария"})
-		return
-	}
-	if parentID < 1 {
+	if req.ParentID < 1 {
 		c.JSON(http.StatusBadRequest, ginext.H{"error": "id родительского комментария должен быть больше 0"})
 		return
 	}
 
-	comments, err := h.svc.GetComments(c.Request.Context(), parentID)
+	var pag *models.PagParam
+	if c.Query("page") != "" || c.Query("limit") != "" || c.Query("sort") != "" {
+		if req.Page <= 0 {
+			req.Page = 1
+		}
+		if req.Limit <= 0 {
+			req.Limit = 20
+		}
+		if req.Sort == "" {
+			req.Sort = "created_at_asc"
+		}
+		pag = &models.PagParam{
+			Page:  req.Page,
+			Limit: req.Limit,
+			Sort:  req.Sort,
+		}
+	}
+
+	result, err := h.svc.GetComments(c.Request.Context(), req.ParentID, pag)
 	if err != nil {
 		if strings.Contains(err.Error(), "не найден") || strings.Contains(err.Error(), "уже удален") {
 			zlog.Logger.Error().Err(err).Msg("svc.GetComments")
@@ -82,8 +99,8 @@ func (h *Handler) getComments(c *ginext.Context) {
 		return
 	}
 
-	commentsDTO := make([]comment, len(comments))
-	for i, c := range comments {
+	commentsDTO := make([]comment, len(result.Comments))
+	for i, c := range result.Comments {
 		commentsDTO[i] = comment{
 			Content:   c.Content,
 			Author:    c.Author,
@@ -96,7 +113,10 @@ func (h *Handler) getComments(c *ginext.Context) {
 
 	out := getCommentsResp{
 		Comments: commentsDTO,
-		Total:    len(comments),
+		Total:    result.Total,
+		Page:     result.Page,
+		Limit:    result.Limit,
+		Pages:    result.Pages,
 	}
 
 	c.JSON(http.StatusOK, out)

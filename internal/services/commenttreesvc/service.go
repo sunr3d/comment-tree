@@ -36,7 +36,24 @@ func (s *commentTreeSvc) WriteComment(ctx context.Context, comment *models.Comme
 	return s.repo.Create(ctx, comment)
 }
 
-func (s *commentTreeSvc) GetComments(ctx context.Context, parentID int64) ([]models.Comment, error) {
+func (s *commentTreeSvc) GetComments(ctx context.Context, parentID int64, pag *models.PagParam) (*models.CommentsRes, error) {
+	if pag == nil {
+		pag = &models.PagParam{
+			Page:  1,
+			Limit: 20,
+			Sort:  "created_at_asc",
+		}
+	}
+	if pag.Page == 0 {
+		pag.Page = 1
+	}
+	if pag.Limit == 0 {
+		pag.Limit = 20
+	}
+	if pag.Sort == "" {
+		pag.Sort = "created_at_asc"
+	}
+
 	comment, err := s.repo.GetByID(ctx, parentID)
 	if err != nil {
 		return nil, fmt.Errorf("s.repo.GetByID: %w", err)
@@ -44,11 +61,11 @@ func (s *commentTreeSvc) GetComments(ctx context.Context, parentID int64) ([]mod
 	if comment == nil {
 		return nil, fmt.Errorf("комментарий с id %d не найден", parentID)
 	}
-	if comment.DeletedAt != nil {
+	/* if comment.DeletedAt != nil {
 		return nil, fmt.Errorf("комментарий с id %d уже удален", parentID)
-	}
+	} */
 
-	return s.repo.GetByParentID(ctx, parentID)
+	return s.repo.GetByParentID(ctx, parentID, pag)
 }
 
 func (s *commentTreeSvc) DeleteComment(ctx context.Context, id int64) error {

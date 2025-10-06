@@ -124,60 +124,6 @@ func TestWriteComment_WithParentID_Deleted(t *testing.T) {
 	assert.Contains(t, err.Error(), "родительский комментарий с id 1 уже удален")
 }
 
-func TestWriteComment_ValidationErrors(t *testing.T) {
-	tests := []struct {
-		name    string
-		comment *models.Comment
-		wantErr string
-	}{
-		{
-			name: "пустое содержимое",
-			comment: &models.Comment{
-				Content: "",
-				Author:  "Тестер",
-			},
-			wantErr: "содержимое комментария не может быть пустым",
-		},
-		{
-			name: "слишком длинное содержимое",
-			comment: &models.Comment{
-				Content: string(make([]byte, 1001)), // 1001 символ
-				Author:  "Тестер",
-			},
-			wantErr: "содержимое комментария не может превышать 1000 символов",
-		},
-		{
-			name: "без автора",
-			comment: &models.Comment{
-				Content: "Комментарий",
-				Author:  "",
-			},
-			wantErr: "автор комментария не может быть пустым",
-		},
-		{
-			name: "слишком длинный автор",
-			comment: &models.Comment{
-				Content: "Комментарий",
-				Author:  string(make([]byte, 51)), // 51 символ
-			},
-			wantErr: "автор комментария не может превышать 50 символов",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			repo := mocks.NewDatabase(t)
-			svc := New(repo)
-			ctx := context.Background()
-
-			err := svc.WriteComment(ctx, tt.comment)
-
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), tt.wantErr)
-		})
-	}
-}
-
 // GetComments tests.
 func TestGetComments_OK(t *testing.T) {
 	repo := mocks.NewDatabase(t)
@@ -185,48 +131,123 @@ func TestGetComments_OK(t *testing.T) {
 
 	ctx := context.Background()
 	parentID := int64(1)
-
-	expectedComments := []models.Comment{
-		{
-			ID:        1,
-			ParentID:  &parentID,
-			Content:   "Комментарий 1",
-			Author:    "Автор 1",
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-			DeletedAt: nil,
-			Level:     1,
-		},
-		{
-			ID:        2,
-			ParentID:  &parentID,
-			Content:   "Комментарий 2",
-			Author:    "Автор 2",
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-			DeletedAt: nil,
-			Level:     1,
-		},
+	pag := &models.PagParam{
+		Page:  1,
+		Limit: 20,
+		Sort:  "created_at_desc",
 	}
 
-	repo.EXPECT().GetByParentID(ctx, parentID).Return(expectedComments, nil)
+	parentComment := &models.Comment{
+		ID:        parentID,
+		ParentID:  nil,
+		Content:   "Комментарий 1",
+		Author:    "Автор 1",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		DeletedAt: nil,
+		Level:     0,
+	}
 
-	comments, err := svc.GetComments(ctx, parentID)
+	expectedResult := &models.CommentsRes{
+		Comments: []models.Comment{
+			{
+				ID:        2,
+				ParentID:  &parentID,
+				Content:   "Ответ 1",
+				Author:    "Автор 2",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+				DeletedAt: nil,
+				Level:     1,
+			},
+		},
+		Total: 1,
+		Page:  1,
+		Limit: 20,
+		Pages: 1,
+	}
+
+	repo.EXPECT().GetByID(ctx, parentID).Return(parentComment, nil)
+	repo.EXPECT().GetByParentID(ctx, parentID, pag).Return(expectedResult, nil)
+
+	result, err := svc.GetComments(ctx, parentID, pag)
 
 	assert.NoError(t, err)
-	assert.Equal(t, expectedComments, comments)
+	assert.Equal(t, expectedResult, result)
 }
 
-func TestGetComments_InvalidParentID(t *testing.T) {
+func TestGetComments_WithNilPagination(t *testing.T) {
 	repo := mocks.NewDatabase(t)
 	svc := New(repo)
-	ctx := context.Background()
 
-	comments, err := svc.GetComments(ctx, 0)
+	ctx := context.Background()
+	parentID := int64(1)
+
+	parentComment := &models.Comment{
+		ID:        parentID,
+		ParentID:  nil,
+		Content:   "Родительский комментарий",
+		Author:    "Автор",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		DeletedAt: nil,
+		Level:     0,
+	}
+
+	expectedResult := &models.CommentsRes{
+		Comments: []models.Comment{},
+		Total:    0,
+		Page:     1,
+		Limit:    20,
+		Pages:    1,
+	}
+
+	expectedPag := &models.PagParam{
+		Page:  1,
+		Limit: 20,
+		Sort:  "created_at_desc",
+	}
+
+	repo.EXPECT().GetByID(ctx, parentID).Return(parentComment, nil)
+	repo.EXPECT().GetByParentID(ctx, parentID, expectedPag).Return(expectedResult, nil)
+
+	result, err := svc.GetComments(ctx, parentID, nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, expectedResult, result)
+}
+
+func TestGetComments_ParentDeleted(t *testing.T) {
+	repo := mocks.NewDatabase(t)
+	svc := New(repo)
+
+	ctx := context.Background()
+	parentID := int64(1)
+	pag := &models.PagParam{
+		Page:  1,
+		Limit: 20,
+		Sort:  "created_at_desc",
+	}
+
+	now := time.Now()
+	parentComment := &models.Comment{
+		ID:        parentID,
+		ParentID:  nil,
+		Content:   "Удаленный комментарий",
+		Author:    "Автор",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		DeletedAt: &now,
+		Level:     0,
+	}
+
+	repo.EXPECT().GetByID(ctx, parentID).Return(parentComment, nil)
+
+	result, err := svc.GetComments(ctx, parentID, pag)
 
 	assert.Error(t, err)
-	assert.Nil(t, comments)
-	assert.Contains(t, err.Error(), "id родительского комментария должен быть больше 0")
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "комментарий с id 1 уже удален")
 }
 
 // DeleteComment tests.

@@ -16,25 +16,47 @@ import (
 )
 
 const (
-	qCreate        = `INSERT INTO comments (parent_id, content, author) VALUES ($1, $2, $3)`
-	qGetByID       = `SELECT id, parent_id, content, author, created_at, updated_at, deleted_at FROM comments WHERE id = $1 AND deleted_at IS NULL`
-	qGetByParentID = `
-    WITH RECURSIVE comment_tree AS (
+	qCreate  = `INSERT INTO comments (parent_id, content, author) VALUES ($1, $2, $3)`
+	qGetByID = `SELECT id, parent_id, content, author, created_at, updated_at, deleted_at FROM comments WHERE id = $1`
+	qDelete  = `
+	WITH RECURSIVE comment_tree AS (
+		SELECT id FROM comments WHERE id = $1
+		UNION ALL
+		SELECT c.id FROM comments c
+		INNER JOIN comment_tree ct ON c.parent_id = ct.id
+		WHERE c.deleted_at IS NULL
+	)
+	UPDATE comments SET deleted_at = NOW() WHERE id IN (SELECT id FROM comment_tree)`
+
+	qCommentTreeCTE = `
+	WITH RECURSIVE comment_tree AS (
         SELECT id, parent_id, content, author, created_at, updated_at, deleted_at, 0 as level
         FROM comments 
-        WHERE id = $1 AND deleted_at IS NULL
+        WHERE id = $1
         
         UNION ALL
         
         SELECT c.id, c.parent_id, c.content, c.author, c.created_at, c.updated_at, c.deleted_at, ct.level + 1
         FROM comments c
         INNER JOIN comment_tree ct ON c.parent_id = ct.id
-        WHERE c.deleted_at IS NULL
-    )
-    SELECT id, parent_id, content, author, created_at, updated_at, deleted_at, level 
-    FROM comment_tree 
-    ORDER BY level, created_at`
-	qDelete = `UPDATE comments SET deleted_at = NOW() WHERE id = $1`
+    )`
+
+	qCommentTreeCount = qCommentTreeCTE + `
+	SELECT COUNT(*) FROM comment_tree`
+
+	qCommentTreePagAsc = qCommentTreeCTE + `
+	SELECT id, parent_id, content, author, created_at, updated_at, deleted_at, level 
+	FROM comment_tree
+	ORDER BY created_at
+	LIMIT $2 OFFSET $3`
+
+	qCommentTreePagDesc = qCommentTreeCTE + `
+	SELECT id, parent_id, content, author, created_at, updated_at, deleted_at, level 
+	FROM comment_tree
+	ORDER BY created_at DESC
+	LIMIT $2 OFFSET $3`
+
+	capComments = 50
 )
 
 var _ infra.Database = (*postgresRepo)(nil)
@@ -105,20 +127,37 @@ func (r *postgresRepo) GetByID(ctx context.Context, id int64) (*models.Comment, 
 	return &out, nil
 }
 
-func (r *postgresRepo) GetByParentID(ctx context.Context, parentID int64) ([]models.Comment, error) {
+func (r *postgresRepo) GetByParentID(ctx context.Context, parentID int64, pag *models.PagParam) (*models.CommentsRes, error) {
+	result := &models.CommentsRes{
+		Comments: make([]models.Comment, 0, capComments),
+		Total:    0,
+		Page:     pag.Page,
+		Limit:    pag.Limit,
+		Pages:    1,
+	}
+
+	query := ""
+	if pag.Sort == "created_at_asc" {
+		query = qCommentTreePagAsc
+	} else {
+		query = qCommentTreePagDesc
+	}
+
+	args := make([]any, 0, 3)
+	offset := (pag.Page - 1) * pag.Limit
+	args = append(args, parentID, pag.Limit, offset)
+
 	rows, err := r.db.QueryWithRetry(
 		ctx,
 		retry.Strategy{Attempts: 3},
-		qGetByParentID,
-		parentID,
+		query,
+		args...,
 	)
 	if err != nil {
 		_ = rows.Close()
 		return nil, fmt.Errorf("r.db.QueryWithRetry: %w", err)
 	}
 	defer rows.Close()
-
-	var out []models.Comment
 
 	for rows.Next() {
 		var comment models.Comment
@@ -135,14 +174,28 @@ func (r *postgresRepo) GetByParentID(ctx context.Context, parentID int64) ([]mod
 			return nil, fmt.Errorf("rows.Scan: %w", err)
 		}
 
-		out = append(out, comment)
+		result.Comments = append(result.Comments, comment)
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("rows.Err: %w", err)
 	}
 
-	return out, nil
+	countRow, err := r.db.QueryRowWithRetry(
+		ctx,
+		retry.Strategy{Attempts: 3},
+		qCommentTreeCount,
+		parentID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("r.db.QueryRowWithRetry: %w", err)
+	}
+	if err := countRow.Scan(&result.Total); err != nil {
+		return nil, fmt.Errorf("countRow.Scan: %w", err)
+	}
+	result.Pages = (result.Total + result.Limit - 1) / result.Limit
+
+	return result, nil
 }
 
 func (r *postgresRepo) Delete(ctx context.Context, id int64) error {

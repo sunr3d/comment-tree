@@ -12,3 +12,17 @@ type Comment struct {
 	DeletedAt *time.Time
 	Level     int
 }
+
+type PagParam struct {
+	Page  int
+	Limit int
+	Sort  string
+}
+
+type CommentsRes struct {
+	Comments []Comment
+	Total    int
+	Page     int
+	Limit    int
+	Pages    int
+}
