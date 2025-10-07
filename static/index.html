@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comment Tree</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Древовидные комментарии</h1>
+        
+        <!-- Поиск -->
+        <div class="search-section">
+            <input type="text" id="searchInput" placeholder="Поиск по комментариям...">
+            <button onclick="searchComments()">Найти</button>
+            <button onclick="clearSearch()">Очистить</button>
+        </div>
+
+        <!-- Дерево комментариев -->
+        <div class="comments-tree" id="commentsTree">
+            <div class="loading">Загрузка комментариев...</div>
+        </div>
+
+        <!-- Форма создания комментария (внизу) -->
+        <div class="comment-form">
+            <h3>Создать новый комментарий</h3>
+            <form id="commentForm">
+                <div>
+                    <label for="author">Автор:</label>
+                    <input type="text" id="author" required maxlength="50">
+                </div>
+                <div>
+                    <label for="content">Комментарий:</label>
+                    <textarea id="content" required maxlength="1000" rows="4"></textarea>
+                </div>
+                <button type="submit">Отправить</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

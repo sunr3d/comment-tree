@@ -42,19 +42,33 @@ const (
     )`
 
 	qCommentTreeCount = qCommentTreeCTE + `
-	SELECT COUNT(*) FROM comment_tree`
+	SELECT COUNT(*) FROM comment_tree
+	WHERE id != $1 AND ($2 = '' OR to_tsvector('russian', content) @@ plainto_tsquery('russian', $2))`
 
 	qCommentTreePagAsc = qCommentTreeCTE + `
 	SELECT id, parent_id, content, author, created_at, updated_at, deleted_at, level 
 	FROM comment_tree
+	WHERE id != $1 AND ($4 = '' OR to_tsvector('russian', content) @@ plainto_tsquery('russian', $4))
 	ORDER BY created_at
 	LIMIT $2 OFFSET $3`
 
 	qCommentTreePagDesc = qCommentTreeCTE + `
 	SELECT id, parent_id, content, author, created_at, updated_at, deleted_at, level 
 	FROM comment_tree
+	WHERE id != $1 AND ($4 = '' OR to_tsvector('russian', content) @@ plainto_tsquery('russian', $4))
 	ORDER BY created_at DESC
 	LIMIT $2 OFFSET $3`
+
+	qRootComments = `
+	SELECT id, parent_id, content, author, created_at, updated_at, deleted_at, 0 as level
+	FROM comments 
+	WHERE parent_id IS NULL AND deleted_at IS NULL
+	ORDER BY created_at`
+
+	qRootCommentsCount = `
+	SELECT COUNT(*) 
+	FROM comments 
+	WHERE parent_id IS NULL AND deleted_at IS NULL`
 
 	capComments = 50
 )
@@ -143,9 +157,9 @@ func (r *postgresRepo) GetByParentID(ctx context.Context, parentID int64, pag *m
 		query = qCommentTreePagDesc
 	}
 
-	args := make([]any, 0, 3)
+	args := make([]any, 0, 4)
 	offset := (pag.Page - 1) * pag.Limit
-	args = append(args, parentID, pag.Limit, offset)
+	args = append(args, parentID, pag.Limit, offset, pag.Search)
 
 	rows, err := r.db.QueryWithRetry(
 		ctx,
@@ -186,6 +200,7 @@ func (r *postgresRepo) GetByParentID(ctx context.Context, parentID int64, pag *m
 		retry.Strategy{Attempts: 3},
 		qCommentTreeCount,
 		parentID,
+		pag.Search,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("r.db.QueryRowWithRetry: %w", err)
@@ -207,4 +222,61 @@ func (r *postgresRepo) Delete(ctx context.Context, id int64) error {
 	)
 
 	return err
+}
+
+func (r *postgresRepo) GetRootComments(ctx context.Context, pag *models.PagParam) (*models.CommentsRes, error) {
+	result := &models.CommentsRes{
+		Comments: make([]models.Comment, 0, capComments),
+		Total:    0,
+		Page:     pag.Page,
+		Limit:    pag.Limit,
+		Pages:    1,
+	}
+
+	rows, err := r.db.QueryWithRetry(
+		ctx,
+		retry.Strategy{Attempts: 3},
+		qRootComments,
+	)
+	if err != nil {
+		_ = rows.Close()
+		return nil, fmt.Errorf("r.db.QueryWithRetry: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var comment models.Comment
+		if err := rows.Scan(
+			&comment.ID,
+			&comment.ParentID,
+			&comment.Content,
+			&comment.Author,
+			&comment.CreatedAt,
+			&comment.UpdatedAt,
+			&comment.DeletedAt,
+			&comment.Level,
+		); err != nil {
+			return nil, fmt.Errorf("rows.Scan: %w", err)
+		}
+
+		result.Comments = append(result.Comments, comment)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows.Err: %w", err)
+	}
+
+	countRow, err := r.db.QueryRowWithRetry(
+		ctx,
+		retry.Strategy{Attempts: 3},
+		qRootCommentsCount,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("r.db.QueryRowWithRetry: %w", err)
+	}
+	if err := countRow.Scan(&result.Total); err != nil {
+		return nil, fmt.Errorf("countRow.Scan: %w", err)
+	}
+	result.Pages = (result.Total + result.Limit - 1) / result.Limit
+
+	return result, nil
 }

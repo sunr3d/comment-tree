@@ -132,9 +132,10 @@ func TestGetComments_OK(t *testing.T) {
 	ctx := context.Background()
 	parentID := int64(1)
 	pag := &models.PagParam{
-		Page:  1,
-		Limit: 20,
-		Sort:  "created_at_desc",
+		Page:   1,
+		Limit:  20,
+		Sort:   "created_at_desc",
+		Search: "",
 	}
 
 	parentComment := &models.Comment{
@@ -203,9 +204,10 @@ func TestGetComments_WithNilPagination(t *testing.T) {
 	}
 
 	expectedPag := &models.PagParam{
-		Page:  1,
-		Limit: 20,
-		Sort:  "created_at_desc",
+		Page:   1,
+		Limit:  20,
+		Sort:   "created_at_asc",
+		Search: "",
 	}
 
 	repo.EXPECT().GetByID(ctx, parentID).Return(parentComment, nil)
@@ -224,9 +226,10 @@ func TestGetComments_ParentDeleted(t *testing.T) {
 	ctx := context.Background()
 	parentID := int64(1)
 	pag := &models.PagParam{
-		Page:  1,
-		Limit: 20,
-		Sort:  "created_at_desc",
+		Page:   1,
+		Limit:  20,
+		Sort:   "created_at_desc",
+		Search: "",
 	}
 
 	now := time.Now()
@@ -241,13 +244,21 @@ func TestGetComments_ParentDeleted(t *testing.T) {
 		Level:     0,
 	}
 
+	expectedResult := &models.CommentsRes{
+		Comments: []models.Comment{},
+		Total:    0,
+		Page:     1,
+		Limit:    20,
+		Pages:    1,
+	}
+
 	repo.EXPECT().GetByID(ctx, parentID).Return(parentComment, nil)
+	repo.EXPECT().GetByParentID(ctx, parentID, pag).Return(expectedResult, nil)
 
 	result, err := svc.GetComments(ctx, parentID, pag)
 
-	assert.Error(t, err)
-	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "комментарий с id 1 уже удален")
+	assert.NoError(t, err)
+	assert.Equal(t, expectedResult, result)
 }
 
 // DeleteComment tests.

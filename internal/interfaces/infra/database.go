@@ -11,5 +11,6 @@ type Database interface {
 	Create(ctx context.Context, comment *models.Comment) error
 	GetByID(ctx context.Context, id int64) (*models.Comment, error)
 	GetByParentID(ctx context.Context, parentID int64, pag *models.PagParam) (*models.CommentsRes, error)
+	GetRootComments(ctx context.Context, pag *models.PagParam) (*models.CommentsRes, error)
 	Delete(ctx context.Context, id int64) error
 }

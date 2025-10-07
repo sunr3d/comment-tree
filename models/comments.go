@@ -14,9 +14,10 @@ type Comment struct {
 }
 
 type PagParam struct {
-	Page  int
-	Limit int
-	Sort  string
+	Page   int
+	Limit  int
+	Sort   string
+	Search string
 }
 
 type CommentsRes struct {

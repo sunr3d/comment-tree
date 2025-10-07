@@ -10,5 +10,6 @@ import (
 type CommentTree interface {
 	WriteComment(ctx context.Context, comment *models.Comment) error
 	GetComments(ctx context.Context, parentID int64, pag *models.PagParam) (*models.CommentsRes, error)
+	GetRootComments(ctx context.Context, pag *models.PagParam) (*models.CommentsRes, error)
 	DeleteComment(ctx context.Context, id int64) error
 }

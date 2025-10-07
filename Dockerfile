@@ -11,6 +11,7 @@ FROM alpine:3.21
 WORKDIR /app
 RUN adduser -D -g '' appuser
 COPY --from=builder /app/comment-tree .
+COPY --from=builder /app/static ./static
 RUN chown appuser:appuser /app
 USER appuser
 

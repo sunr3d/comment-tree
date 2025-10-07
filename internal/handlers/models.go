@@ -9,10 +9,11 @@ type createCommentReq struct {
 }
 
 type getCommentsReq struct {
-	ParentID int64  `form:"parent" binding:"required"`
+	ParentID *int64 `form:"parent"`
 	Page     int    `form:"page"`
 	Limit    int    `form:"limit"`
 	Sort     string `form:"sort"`
+	Search   string `form:"search"`
 }
 
 type getCommentsResp struct {
@@ -24,6 +25,7 @@ type getCommentsResp struct {
 }
 
 type comment struct {
+	ID        int64      `json:"id"`
 	Content   string     `json:"content"`
 	Author    string     `json:"author"`
 	CreatedAt time.Time  `json:"created_at"`

@@ -83,3 +83,25 @@ func (s *commentTreeSvc) DeleteComment(ctx context.Context, id int64) error {
 
 	return s.repo.Delete(ctx, id)
 }
+
+func (s *commentTreeSvc) GetRootComments(ctx context.Context, pag *models.PagParam) (*models.CommentsRes, error) {
+	if pag == nil {
+		pag = &models.PagParam{
+			Page:   1,
+			Limit:  20,
+			Sort:   "created_at_asc",
+			Search: "",
+		}
+	}
+	if pag.Page == 0 {
+		pag.Page = 1
+	}
+	if pag.Limit == 0 {
+		pag.Limit = 20
+	}
+	if pag.Sort == "" {
+		pag.Sort = "created_at_asc"
+	}
+
+	return s.repo.GetRootComments(ctx, pag)
+}
